@@ -10,6 +10,23 @@ from ..client import SoyCmsClient
 
 TOOL_NAME = "soy_create_draft"
 
+# Bridge plugin の ALLOWED_CATEGORIES と一致させる（component/ArticlesEndpoint.php）
+ALLOWED_LABELS = [
+    # 既存（2026-05-01時点の本番ラベル）
+    "moringa",
+    "moringa_music",
+    "コラム",
+    "お知らせ",
+    # 設計上の追加予定
+    "nutrition",
+    "recipes",
+    "comparison",
+    "brand",
+]
+
+# 全記事に必須付与するラベル（オーナー指示・2026-05-02）
+REQUIRED_LABELS = ["コラム"]
+
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -38,9 +55,12 @@ INPUT_SCHEMA = {
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": ["moringa", "nutrition", "recipes", "comparison", "brand"],
+                "enum": ALLOWED_LABELS,
             },
-            "description": "カテゴリラベルのalias (allowlist)",
+            "description": (
+                f"カテゴリラベルのalias (allowlist={ALLOWED_LABELS})。"
+                f"'コラム' は指定しなくても自動付与される（REQUIRED_LABELS={REQUIRED_LABELS}）。"
+            ),
         },
         "author": {
             "type": "string",
@@ -55,7 +75,17 @@ DESCRIPTION = (
     "SOY CMS に下書き (is_published=0) として記事を登録する。"
     "Bridge API 経由。**公開** はオーナーが管理画面で人間判断（このツールでは公開できない）。"
     "1日10件まで。本文は事前に exports/soycms-html/ に書き出されたHTMLを参照する。"
+    f"全記事に '{','.join(REQUIRED_LABELS)}' ラベルを自動付与する（オーナーの運用ルール）。"
 )
+
+
+def _merge_required_labels(user_labels: list[str]) -> list[str]:
+    """ユーザー指定の label_aliases に REQUIRED_LABELS を必ず追加（順序保持・重複排除）"""
+    merged: list[str] = []
+    for label in list(user_labels) + REQUIRED_LABELS:
+        if label not in merged:
+            merged.append(label)
+    return merged
 
 
 def execute(client: SoyCmsClient, args: dict[str, Any]) -> dict[str, Any]:
@@ -95,6 +125,8 @@ def execute(client: SoyCmsClient, args: dict[str, Any]) -> dict[str, Any]:
             "hint": "BODY_MORE を分割するか、記事を分割してください",
         }
 
+    label_aliases = _merge_required_labels(args.get("label_aliases", []))
+
     payload = {
         "title": args["title"],
         "alias": args["alias"],
@@ -102,7 +134,7 @@ def execute(client: SoyCmsClient, args: dict[str, Any]) -> dict[str, Any]:
         "more": more_html,
         "description": args.get("description", ""),
         "author": args.get("author", "kaitani"),
-        "label_aliases": args.get("label_aliases", []),
+        "label_aliases": label_aliases,
     }
 
     result = client.bridge_post("/articles/draft", body=payload)
@@ -111,6 +143,7 @@ def execute(client: SoyCmsClient, args: dict[str, Any]) -> dict[str, Any]:
         "entry_id": result.get("entry_id"),
         "alias": result.get("alias"),
         "is_published": result.get("is_published"),
+        "applied_labels": label_aliases,
         "next_action": (
             "SOY CMS管理画面で内容確認 → 「公開」ボタンを押してください。"
             "公開URLは https://eleve-organic.jp/moringa/article/{alias} になります。"
