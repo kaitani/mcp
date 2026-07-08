@@ -27,6 +27,15 @@ ALLOWED_LABELS = [
 # 全記事に必須付与するラベル（オーナー指示・2026-05-02）
 REQUIRED_LABELS = ["コラム"]
 
+# 本文バイト上限（正本 = Bridge plugin ArticlesEndpoint.php の MAX_CONTENT_BYTES /
+# MAX_MORE_BYTES / MAX_TOTAL_BYTES と**必ず一致**させること。
+# ここは Bridge へ送る前の事前 check。Bridge より厳しくすると本文が正当でも弾かれる
+# （2026-07-08 #1946: MCP=4000 が Bridge=8000 より厳しく、フル版ピラー記事を誤拒否した）。
+# SQLite の VARCHAR(4000) は長さ非強制（型ヒント）のため DB 側の実上限ではない。
+MAX_CONTENT_BYTES = 8000
+MAX_MORE_BYTES = 8000
+MAX_TOTAL_BYTES = 16000
+
 INPUT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -109,20 +118,29 @@ def execute(client: SoyCmsClient, args: dict[str, Any]) -> dict[str, Any]:
     content_html = content_path.read_text(encoding="utf-8")
     more_html = more_path.read_text(encoding="utf-8")
 
-    # 4000バイト チェック (Bridge側でも検証されるが事前確認)
-    if len(content_html.encode("utf-8")) > 4000:
+    # バイト上限チェック（Bridge側が正本。ここは事前確認で Bridge と同値に揃える）
+    content_bytes = len(content_html.encode("utf-8"))
+    more_bytes = len(more_html.encode("utf-8"))
+    if content_bytes > MAX_CONTENT_BYTES:
         return {
             "error": "content_too_long",
-            "bytes": len(content_html.encode("utf-8")),
-            "limit": 4000,
+            "bytes": content_bytes,
+            "limit": MAX_CONTENT_BYTES,
             "hint": "BODY_MAIN を分割するか、記事を分割してください",
         }
-    if len(more_html.encode("utf-8")) > 4000:
+    if more_bytes > MAX_MORE_BYTES:
         return {
             "error": "more_too_long",
-            "bytes": len(more_html.encode("utf-8")),
-            "limit": 4000,
+            "bytes": more_bytes,
+            "limit": MAX_MORE_BYTES,
             "hint": "BODY_MORE を分割するか、記事を分割してください",
+        }
+    if content_bytes + more_bytes > MAX_TOTAL_BYTES:
+        return {
+            "error": "total_too_long",
+            "bytes": content_bytes + more_bytes,
+            "limit": MAX_TOTAL_BYTES,
+            "hint": "content+more の合計が上限超過。記事を分割してください",
         }
 
     label_aliases = _merge_required_labels(args.get("label_aliases", []))
