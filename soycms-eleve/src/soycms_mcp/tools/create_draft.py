@@ -32,9 +32,11 @@ REQUIRED_LABELS = ["コラム"]
 # ここは Bridge へ送る前の事前 check。Bridge より厳しくすると本文が正当でも弾かれる
 # （2026-07-08 #1946: MCP=4000 が Bridge=8000 より厳しく、フル版ピラー記事を誤拒否した）。
 # SQLite の VARCHAR(4000) は長さ非強制（型ヒント）のため DB 側の実上限ではない。
-MAX_CONTENT_BYTES = 8000
-MAX_MORE_BYTES = 8000
-MAX_TOTAL_BYTES = 16000
+# 2026-07-21: オーナー指示で8000→16000へ倍増（記事がちょうど上限付近に集中し
+# 毎回トリミングが発生していたため）。3箇所同期ペアを維持。
+MAX_CONTENT_BYTES = 16000
+MAX_MORE_BYTES = 16000
+MAX_TOTAL_BYTES = 32000
 
 INPUT_SCHEMA = {
     "type": "object",
