@@ -2,6 +2,8 @@
 
 由来: cc-company #1946 — MCP の事前 check が 4000 で、正本 Bridge の 8000 より
 厳しく、フル版ピラー記事（各セクション 4000〜8000 バイト）を誤って弾いていた。
+2026-07-21 に Bridge/MCP/converter とも 16000/16000/32000 へ倍増（#5575:
+このテストのみ旧8000値のまま同期漏れしていたのを是正）。
 上限は Bridge plugin ArticlesEndpoint.php と同期必須。
 """
 
@@ -46,15 +48,15 @@ def _args(tmp_path, content_bytes, more_bytes):
 
 def test_bridge_limits_are_in_sync_with_plugin():
     # 正本 Bridge (ArticlesEndpoint.php) と同値であることの明示的な固定
-    assert MAX_CONTENT_BYTES == 8000
-    assert MAX_MORE_BYTES == 8000
-    assert MAX_TOTAL_BYTES == 16000
+    assert MAX_CONTENT_BYTES == 16000
+    assert MAX_MORE_BYTES == 16000
+    assert MAX_TOTAL_BYTES == 32000
 
 
-def test_content_between_4000_and_8000_now_passes(tmp_path):
-    """#1946 回帰: 旧 4000 上限では弾かれていた 6000 バイトが通ること。"""
+def test_content_between_8000_and_16000_now_passes(tmp_path):
+    """#5575 回帰: MCP=8000 が Bridge=16000 より厳しく誤拒否していた帯が通ること。"""
     client = _StubClient()
-    result = execute(client, _args(tmp_path, content_bytes=6000, more_bytes=3000))
+    result = execute(client, _args(tmp_path, content_bytes=12000, more_bytes=6000))
     assert result["ok"] is True
     assert result["entry_id"] == 13
     assert client.posted is not None  # bridge_post まで到達
@@ -76,7 +78,7 @@ def test_more_over_limit_rejected(tmp_path):
 
 
 def test_both_sections_at_limit_pass(tmp_path):
-    """各セクション上限ちょうど(8000+8000=16000)は通る。
+    """各セクション上限ちょうど(16000+16000=32000)は通る。
 
     総量チェック(> MAX_TOTAL_BYTES)は各セクション上限の合計と一致するため
     実質は防御的パリティ（正本 Bridge と同構造）。境界がちょうど通ることを固定。
